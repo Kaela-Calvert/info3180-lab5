@@ -18,6 +18,44 @@ import os
 def index():
     return jsonify(message="This is the beginning of our API")
 
+app = Flask(__name__)
+UPLOAD_FOLDER = 'uploads'
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+# Endpoint for adding movies
+@app.route('/api/v1/movies', methods=['POST'])
+def movies():
+    form = MovieForm(request.form)
+    
+    # Validate the form
+    if form.validate():
+        # Extract data from the form
+        title = form.title.data
+        description = form.description.data
+        poster = request.files['poster']
+        poster_filename = secure_filename(poster.filename)
+        
+        # Save the poster file to the upload folder
+        poster.save(os.path.join(app.config['UPLOAD_FOLDER'], poster_filename))
+        
+        # Create a Movie object and add it to the database
+        movie = Movie(title=title, description=description, poster=poster_filename)
+        db.session.add(movie)
+        db.session.commit()
+        
+        # Return a success message and movie details in JSON format
+        return jsonify({
+            'message': 'Movie Successfully added',
+            'title': title,
+            'poster': poster_filename,
+            'description': description
+        })
+    else:
+        # Form validation failed, return errors
+        errors = form_errors(form)
+        return jsonify({'errors': errors}), 400
+
+        
 
 ###
 # The functions below should be applicable to all Flask apps.
