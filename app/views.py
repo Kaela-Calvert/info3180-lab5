@@ -6,7 +6,12 @@ This file creates your application.
 """
 
 from app import app
-from flask import render_template, request, jsonify, send_file
+from app import models, forms, db   
+from app.forms import MovieForm
+from app.models import Movie
+from werkzeug.utils import secure_filename
+from flask import render_template, request, jsonify, send_file, current_app, send_from_directory
+from flask_wtf.csrf import generate_csrf
 import os
 
 
@@ -18,44 +23,54 @@ import os
 def index():
     return jsonify(message="This is the beginning of our API")
 
-app = Flask(__name__)
+@app.route('/api/v1/csrf-token', methods=['GET'])
+def get_csrf():
+    return jsonify({'csrf_token': generate_csrf()})
+
+@app.route('/api/v1/posters/<filename>', methods=['GET'])
+def get_poster(filename):
+    return send_from_directory(os.path.join(app.root_path, 'uploads'), filename)
+
+@app.route('/api/v1/movies', methods=['GET'])
+def get_movies():
+    movies = Movie.query.all()
+    movies_list = []
+    for movie in movies:
+        movies_list.append({
+            'id': movie.id,
+            'title': movie.title,
+            'description': movie.description,
+            'poster': f"/api/v1/posters/{movie.poster}"
+        })
+    return jsonify({'movies': movies_list})
+
 UPLOAD_FOLDER = 'uploads'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 # Endpoint for adding movies
 @app.route('/api/v1/movies', methods=['POST'])
 def movies():
-    form = MovieForm(request.form)
-    
-    # Validate the form
-    if form.validate():
-        # Extract data from the form
+    form = MovieForm()
+    if form.validate_on_submit():
         title = form.title.data
         description = form.description.data
-        poster = request.files['poster']
-        poster_filename = secure_filename(poster.filename)
-        
-        # Save the poster file to the upload folder
-        poster.save(os.path.join(app.config['UPLOAD_FOLDER'], poster_filename))
-        
-        # Create a Movie object and add it to the database
-        movie = Movie(title=title, description=description, poster=poster_filename)
+        poster = form.poster.data
+        filename = secure_filename(poster.filename)
+        poster.save(os.path.join(current_app.root_path, 'uploads', filename))
+
+        movie = Movie(title=title, description=description, poster=filename)
         db.session.add(movie)
         db.session.commit()
-        
-        # Return a success message and movie details in JSON format
+
         return jsonify({
-            'message': 'Movie Successfully added',
-            'title': title,
-            'poster': poster_filename,
-            'description': description
+            "message": "Movie Successfully added",
+            "title": title,
+            "poster": filename,
+            "description": description
         })
     else:
-        # Form validation failed, return errors
-        errors = form_errors(form)
-        return jsonify({'errors': errors}), 400
+        return jsonify({"errors": form_errors(form)}), 400
 
-        
 
 ###
 # The functions below should be applicable to all Flask apps.
